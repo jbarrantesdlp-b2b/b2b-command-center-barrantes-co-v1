@@ -1,6 +1,15 @@
 import Firecrawl from '@mendable/firecrawl-js'
 import { sql } from './_db.js'
 
+function unwrapScrapeResult(result) {
+  const data = result?.data ?? result
+  return {
+    markdown: data?.markdown ?? '',
+    html: data?.html ?? null,
+    metadata: data?.metadata ?? null,
+  }
+}
+
 const SOURCE_TYPES = ['competidor', 'cliente', 'mercado', 'referencia']
 
 async function ensureMarketIntelligenceTable() {
@@ -113,16 +122,20 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: `source_type must be one of: ${SOURCE_TYPES.join(', ')}` })
     }
 
-    const apiKey = process.env.FIRECRAWL_API_KEY
-    if (!apiKey) {
+    if (!process.env.FIRECRAWL_API_KEY) {
       return res.status(500).json({ ok: false, error: 'FIRECRAWL_API_KEY is not set' })
     }
 
     await ensureMarketIntelligenceTable()
 
-    const firecrawl = new Firecrawl({ apiKey })
-    const result = await firecrawl.scrape(url, { formats: ['markdown'] })
-    const markdown = result.markdown ?? ''
+    const firecrawl = new Firecrawl({
+      apiKey: process.env.FIRECRAWL_API_KEY,
+    })
+
+    const scrapeResult = await firecrawl.scrape(url, {
+      formats: ['markdown', 'html'],
+    })
+    const { markdown } = unwrapScrapeResult(scrapeResult)
 
     const summary = buildStructuredSummary(markdown, { label: String(label).trim(), source_type, url })
 
