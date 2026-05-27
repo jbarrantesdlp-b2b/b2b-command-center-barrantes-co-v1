@@ -9,6 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@mendable/firecrawl-js": "^1.21.0",
+    "@neondatabase/serverless": "^0.10.4",
     "@supabase/supabase-js": "^2.45.4",
     "@vitejs/plugin-react": "^4.3.1",
     "vite": "^5.4.8",
