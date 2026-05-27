@@ -136,16 +136,18 @@ function CommandCenter({ signOut }){
         <button className={view==='business'?'navBtn active':'navBtn'} onClick={()=>setView('business')}><Target size={16}/>Business Plan</button>
         <button className={view==='calendar'?'navBtn active':'navBtn'} onClick={()=>setView('calendar')}><CalendarDays size={16}/>Calendario</button>
         <button className={view==='notes'?'navBtn active':'navBtn'} onClick={()=>setView('notes')}><NotebookPen size={16}/>Notas</button>
+        <button className={view==='market'?'navBtn active':'navBtn'} onClick={()=>setView('market')}><Search size={16}/>Market Intelligence</button>
         <button className={view==='settings'?'navBtn active':'navBtn'} onClick={()=>setView('settings')}><Settings size={16}/>Config.</button>
         <button className="navBtn" onClick={signOut}><LogOut size={16}/>Salir</button>
       </nav></header>
     <main className="shell">
-      <div className={`statusBar cloud ${view==='home' ? 'statusBarExec' : ''}`}><Cloud size={16}/> Supabase conectado: datos en nube {cloudError && <span className="errorInline">{cloudError}</span>} {loadingCloud && <span>Cargando...</span>} <button className="btn small" onClick={()=>refreshCloud(false)}>Actualizar nube</button></div>
+      <div className={`statusBar cloud ${view==='home' || view==='market' ? 'statusBarExec' : ''}`}><Cloud size={16}/> Supabase conectado: datos en nube {cloudError && <span className="errorInline">{cloudError}</span>} {loadingCloud && <span>Cargando...</span>} <button className="btn small" onClick={()=>refreshCloud(false)}>Actualizar nube</button></div>
       {view==='home' && <Home db={db} pipelineData={pipelineData} setView={setView}/>}
       {view==='crm' && <CRM db={db} query={query} setQuery={setQuery} selectedCompany={selectedCompany} setSelectedCompanyId={setSelectedCompanyId} saveCompany={saveCompany} addCompany={addCompany} deleteCompany={deleteCompany} addContact={addContact} updateContact={updateContact} deleteContact={deleteContact} addTaskFromCompany={addTaskFromCompany} importClientBase={importClientBase}/>}
       {view==='business' && <BusinessPlan db={db} updateBP={updateBP}/>}
       {view==='calendar' && <CalendarView db={db} addTask={addTask} updateTask={updateTask} deleteTask={deleteTask} month={month} setMonth={setMonth}/>}
       {view==='notes' && <Notes db={db} saveNotes={saveNotes}/>}
+      {view==='market' && <MarketIntelligence />}
       {view==='settings' && <SettingsPanel db={db} exportBackup={exportBackup}/>}
     </main></div>
 }
@@ -795,6 +797,189 @@ function CalendarView({ db, addTask, updateTask, deleteTask, month, setMonth }){
   return <section className="calendarLayout"><div className="panel"><div className="panelHead"><button className="btn small" onClick={()=>setMonth(new Date(year,monthIndex-1,1))}>←</button><h2>{month.toLocaleDateString('es-PE',{month:'long',year:'numeric'})}</h2><button className="btn small" onClick={()=>setMonth(new Date(year,monthIndex+1,1))}>→</button></div><div className="calendarGrid">{['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'].map(d=><b className="dayName" key={d}>{d}</b>)}{cells.map((date,i)=><div className="dayCell" key={i}>{date && <><strong>{date.getDate()}</strong>{taskForDate(date).slice(0,3).map(t=><span key={t.id} className="taskDot">{t.title}</span>)}</>}</div>)}</div></div><aside className="panel"><h2>Nueva actividad</h2><form className="taskForm" onSubmit={submit}><input placeholder="Actividad" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/><select value={form.type} onChange={e=>setForm({...form,type:e.target.value})}><option>CRM</option><option>Business Plan</option><option>KPI</option><option>Proyecto</option><option>Otro</option></select><input type="date" value={form.due_date} onChange={e=>setForm({...form,due_date:e.target.value})}/><input type="time" value={form.due_time} onChange={e=>setForm({...form,due_time:e.target.value})}/><button className="btn gold">Agendar</button></form><div className="taskList">{db.tasks.map(t=><div className="taskItem" key={t.id}><b>{t.title}</b><span>{t.type} · {t.due_date} · {t.due_time || ''} · {t.status}</span><div className="row"><button className="btn small" onClick={()=>updateTask({...t,status:t.status==='hecha'?'vigente':'hecha'})}><CheckCircle2 size={14}/>Estado</button><button className="btn small danger" onClick={()=>deleteTask(t.id)}>Eliminar</button></div></div>)}</div></aside></section>
 }
 function Notes({ db, saveNotes }){ return <section className="panel"><h2>Notas rápidas</h2><p>Mapa de ideas, recordatorios comerciales y observaciones del día.</p><textarea className="notesArea" value={db.notes} onChange={e=>saveNotes(e.target.value)} placeholder="Escriba aquí..." /></section> }
+
+function MarketIntelligence(){
+  const [url, setUrl] = useState('')
+  const [label, setLabel] = useState('')
+  const [sourceType, setSourceType] = useState('competidor')
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [loadingList, setLoadingList] = useState(true)
+  const [error, setError] = useState('')
+
+  async function loadList(){
+    setLoadingList(true)
+    setError('')
+    try{
+      const res = await fetch('/api/market-intelligence-list')
+      const data = await res.json()
+      if(!data.ok) throw new Error(data.error || 'No se pudo cargar el listado')
+      setItems(data.items || [])
+    }catch(err){
+      setError(err.message || 'Error cargando análisis')
+    }finally{
+      setLoadingList(false)
+    }
+  }
+
+  useEffect(() => { loadList() }, [])
+
+  async function analyzeUrl(e){
+    e.preventDefault()
+    setError('')
+    if(!url.trim()){
+      setError('Ingrese una URL válida')
+      return
+    }
+    if(!label.trim()){
+      setError('Ingrese una etiqueta para el análisis')
+      return
+    }
+    setLoading(true)
+    try{
+      const res = await fetch('/api/market-intelligence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url.trim(), label: label.trim(), source_type: sourceType }),
+      })
+      const data = await res.json()
+      if(!data.ok) throw new Error(data.error || 'No se pudo analizar la URL')
+      if(data.item) setItems(prev => [data.item, ...prev.filter(i => i.id !== data.item.id)])
+      setUrl('')
+      setLabel('')
+    }catch(err){
+      setError(err.message || 'Error analizando URL')
+    }finally{
+      setLoading(false)
+    }
+  }
+
+  function formatDate(value){
+    if(!value) return ''
+    try{
+      return new Date(value).toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'short' })
+    }catch{
+      return String(value)
+    }
+  }
+
+  function sourceTypeLabel(t){
+    return { competidor:'Competidor', cliente:'Cliente', mercado:'Mercado', referencia:'Referencia' }[t] || t
+  }
+
+  return (
+    <section className="execHome miHome">
+      <div className="miHeader execFadeIn" style={{ '--delay': '0ms' }}>
+        <div>
+          <div className="execMiniK">Inteligencia comercial</div>
+          <h2 className="execTitle">Market Intelligence</h2>
+          <p className="execSubtitle">Analice competidores, clientes y referencias de mercado con extracción automática vía Firecrawl y persistencia en Neon.</p>
+        </div>
+      </div>
+
+      <form className="miForm execCard execFadeIn" style={{ '--delay': '90ms' }} onSubmit={analyzeUrl}>
+        <div className="miFormGrid">
+          <label className="miLabel">
+            URL fuente
+            <input
+              className="miInput"
+              type="url"
+              value={url}
+              onChange={e => setUrl(e.target.value)}
+              placeholder="https://ejemplo.com"
+              disabled={loading}
+            />
+          </label>
+          <label className="miLabel">
+            Etiqueta
+            <input
+              className="miInput"
+              value={label}
+              onChange={e => setLabel(e.target.value)}
+              placeholder="Ej: Competidor Lima · Flotas"
+              disabled={loading}
+            />
+          </label>
+          <label className="miLabel">
+            Tipo de fuente
+            <select className="miInput" value={sourceType} onChange={e => setSourceType(e.target.value)} disabled={loading}>
+              <option value="competidor">Competidor</option>
+              <option value="cliente">Cliente</option>
+              <option value="mercado">Mercado</option>
+              <option value="referencia">Referencia</option>
+            </select>
+          </label>
+        </div>
+        <div className="miFormActions">
+          <button type="submit" className="btn gold miAnalyzeBtn" disabled={loading}>
+            {loading ? 'Analizando URL…' : 'Analizar URL'}
+          </button>
+          <button type="button" className="btn small miRefreshBtn" onClick={loadList} disabled={loadingList || loading}>
+            Actualizar listado
+          </button>
+        </div>
+        {loading && <div className="miLoading">Extrayendo contenido y generando resumen estructurado…</div>}
+        {error && <div className="miError">{error}</div>}
+      </form>
+
+      <div className="miListHead execFadeIn" style={{ '--delay': '180ms' }}>
+        <h3 className="miListTitle">Análisis guardados</h3>
+        <span className="miListCount">{items.length} registros</span>
+      </div>
+
+      {loadingList && <div className="miLoading miLoadingList">Cargando análisis…</div>}
+
+      <div className="miGrid">
+        {!loadingList && !items.length && (
+          <div className="miEmpty execCard execFadeIn" style={{ '--delay': '240ms' }}>
+            Aún no hay análisis. Ingrese una URL y pulse <b>Analizar URL</b>.
+          </div>
+        )}
+        {items.map((item, idx) => (
+          <article key={item.id} className="miCard execCard execFadeIn" style={{ '--delay': `${240 + idx * 60}ms` }}>
+            <div className="miCardHead">
+              <div>
+                <h4 className="miCardLabel">{item.label}</h4>
+                <div className="miCardMeta">
+                  <span className={`miTag miTag-${item.source_type}`}>{sourceTypeLabel(item.source_type)}</span>
+                  {item.created_at && <span className="miDate">{formatDate(item.created_at)}</span>}
+                </div>
+              </div>
+            </div>
+            <a className="miUrl" href={item.url} target="_blank" rel="noreferrer">{item.url}</a>
+            <div className="miSections">
+              <div className="miSection">
+                <h5>Propuesta de valor</h5>
+                <p>{item.propuesta_valor || '—'}</p>
+              </div>
+              <div className="miSection">
+                <h5>Precios detectados</h5>
+                <p className="miPre">{item.precios || '—'}</p>
+              </div>
+              <div className="miSection">
+                <h5>Servicios</h5>
+                <p className="miPre">{item.servicios || '—'}</p>
+              </div>
+              <div className="miSection">
+                <h5>Dolores atacados</h5>
+                <p className="miPre">{item.dolores_atacados || '—'}</p>
+              </div>
+              <div className="miSection">
+                <h5>Argumentos comerciales</h5>
+                <p className="miPre">{item.argumentos_comerciales || '—'}</p>
+              </div>
+              <div className="miSection miSectionHighlight">
+                <h5>Oportunidades para Geosatelital</h5>
+                <p className="miPre">{item.oportunidades_geosatelital || '—'}</p>
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 function SettingsPanel({ db, exportBackup }){ return <section className="panel"><h2>Configuración</h2><div className="settingsGrid"><div className="subPanel"><h3>Roles previstos</h3><p>Admin · Team Leader · KAM · Operations · Viewer</p></div><div className="subPanel"><h3>Respaldo</h3><button className="btn dark" onClick={exportBackup}>Exportar backup JSON</button></div><div className="subPanel"><h3>Modo de datos</h3><p>Supabase conectado. Datos centrales en nube.</p></div></div></section> }
 
 createRoot(document.getElementById('root')).render(<App />)
