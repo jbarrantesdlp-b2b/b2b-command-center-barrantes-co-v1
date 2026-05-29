@@ -1,5 +1,8 @@
 import * as XLSX from 'xlsx'
 
+const ALLOWED_EXTENSIONS = new Set(['xlsx', 'xls', 'csv'])
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
+
 function norm(value){
   return String(value ?? '')
     .trim()
@@ -48,19 +51,42 @@ function cleanEmail(v){
 }
 
 export async function parseClientFile(file){
-  const ext = file.name.split('.').pop().toLowerCase()
+  if(!file) throw new Error('Seleccione un archivo para importar.')
+  const ext = file.name.split('.').pop()?.toLowerCase()
+  if(!ALLOWED_EXTENSIONS.has(ext)){
+    throw new Error('Formato no permitido. Use un archivo .xlsx, .xls o .csv.')
+  }
+  if(file.size === 0){
+    throw new Error('El archivo está vacío.')
+  }
+  if(file.size > MAX_FILE_SIZE_BYTES){
+    throw new Error('El archivo supera el tamaño máximo permitido de 10 MB.')
+  }
+
   let rows = []
 
-  if(ext === 'csv'){
-    const text = await file.text()
-    const workbook = XLSX.read(text, { type:'string' })
-    const sheet = workbook.Sheets[workbook.SheetNames[0]]
-    rows = XLSX.utils.sheet_to_json(sheet, { defval:'' })
-  }else{
-    const arrayBuffer = await file.arrayBuffer()
-    const workbook = XLSX.read(arrayBuffer, { type:'array' })
-    const sheet = workbook.Sheets[workbook.SheetNames[0]]
-    rows = XLSX.utils.sheet_to_json(sheet, { defval:'' })
+  try{
+    // XLSX mantiene vulnerabilidades conocidas; limitar entrada reduce superficie mientras se evalúa reemplazo.
+    if(ext === 'csv'){
+      const text = await file.text()
+      const workbook = XLSX.read(text, { type:'string' })
+      const sheet = workbook.Sheets[workbook.SheetNames[0]]
+      if(!sheet) throw new Error('El archivo no contiene hojas válidas.')
+      rows = XLSX.utils.sheet_to_json(sheet, { defval:'' })
+    }else{
+      const arrayBuffer = await file.arrayBuffer()
+      const workbook = XLSX.read(arrayBuffer, { type:'array' })
+      const sheet = workbook.Sheets[workbook.SheetNames[0]]
+      if(!sheet) throw new Error('El archivo no contiene hojas válidas.')
+      rows = XLSX.utils.sheet_to_json(sheet, { defval:'' })
+    }
+  }catch(err){
+    if(err.message === 'El archivo no contiene hojas válidas.') throw err
+    throw new Error('No se pudo leer el archivo. Verifique que no esté corrupto y que tenga formato válido.')
+  }
+
+  if(rows.length === 0){
+    throw new Error('El archivo no contiene filas para importar.')
   }
 
   const companyByRuc = new Map()
