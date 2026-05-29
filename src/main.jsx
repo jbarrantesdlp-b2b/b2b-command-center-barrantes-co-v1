@@ -4,7 +4,6 @@ import { CalendarDays, LayoutDashboard, Users, Target, Settings, LogOut, Plus, S
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, CartesianGrid, Cell } from 'recharts'
 import { supabase, hasSupabase } from './lib/supabaseClient'
 import { pipelineStages } from './data/seed'
-import { parseClientFile } from './lib/importer'
 import {
   readLocal, writeLocal, loadCloudData, seedCloudIfEmpty, saveCompanyCloud, upsertCompanyByRucCloud, deleteCompanyCloud,
   saveContactCloud, insertImportedContactCloud, deleteContactCloud, saveTaskCloud, deleteTaskCloud, saveNotesCloud, saveBusinessPlanSection
@@ -85,6 +84,7 @@ function CommandCenter({ signOut }){
   async function importClientBase(file){
     if(!file) return
     try{
+      const { parseClientFile } = await import('./lib/importer')
       const parsed = await parseClientFile(file)
       const rucToCompanyId = {}
       for(const company of parsed.companies){

@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check": "npm run build && npm run audit",
+    "audit": "npm audit"
   },
   "dependencies": {
     "@mendable/firecrawl-js": "^4.11.1",
